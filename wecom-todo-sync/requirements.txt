@@ -1,0 +1,6 @@
+# 本工具只依赖 Python 标准库（3.8+），无需安装任何第三方包。
+# 保留这个文件只是为了 `pip install -r requirements.txt` 不报错。
+#
+# 运行前置条件（不是 Python 包）：
+#   npm install -g @wecom/cli
+#   wecom-cli auth init
