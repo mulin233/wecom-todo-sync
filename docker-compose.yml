@@ -2,7 +2,7 @@ name: wecom-todo-sync
 
 services:
   app:
-    image: wecom-todo-sync:latest
+    image: wecom-todo-sync:0.1
     container_name: wecom-todo-sync
     restart: unless-stopped
     # init: Docker 自带的 tini，负责转发信号、回收僵尸进程
@@ -34,8 +34,11 @@ services:
       FEISHU_TASKLIST_GUID: "${FEISHU_TASKLIST_GUID:-}"
 
     volumes:
-      # 整个项目目录挂进去：config.json、data/、exports/、logs/ 都直接落在宿主机
-      - ./:/app
+      # 程序文件全部打在镜像里，宿主机只挂载持久化数据
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./exports:/app/exports
+      - ./logs:/app/logs
 
     ports:
       # 仅本机使用：飞书 OAuth 回调 http://localhost:8765/callback

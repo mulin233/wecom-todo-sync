@@ -26,14 +26,16 @@ export WECOM_CLI_LOG_DIR
 mkdir -p "$WECOM_CLI_CONFIG_DIR" "$WECOM_CLI_LOG_DIR" \
          "$APP_DIR/data/raw" "$APP_DIR/exports" "$APP_DIR/logs" 2>/dev/null
 
-# ---- 首次启动：从示例生成 config.json ----
-if [ ! -f "$APP_DIR/config.json" ] && [ -f "$APP_DIR/config.example.json" ]; then
-  if cp "$APP_DIR/config.example.json" "$APP_DIR/config.json" 2>/dev/null; then
-    chmod 600 "$APP_DIR/config.json" 2>/dev/null || true
-    echo "[docker] 未找到 config.json，已从 config.example.json 生成。"
+# ---- 配置目录（挂载在 /app/config，/app/config.json 是指向它的软链）----
+CONFIG_DIR="${CONFIG_DIR:-${APP_DIR}/config}"
+mkdir -p "$CONFIG_DIR" 2>/dev/null
+if [ ! -f "$CONFIG_DIR/config.json" ] && [ -f "$APP_DIR/config.example.json" ]; then
+  if cp "$APP_DIR/config.example.json" "$CONFIG_DIR/config.json" 2>/dev/null; then
+    chmod 600 "$CONFIG_DIR/config.json" 2>/dev/null || true
+    echo "[docker] 未找到 config/config.json，已从镜像内的示例生成。"
     echo "[docker] 请填写 feishu.app_id / app_secret / default_assignee_open_id，然后重启容器。"
   else
-    echo "[docker] 警告：无法写入 ${APP_DIR}/config.json（检查 bind mount 属主与 PUID/PGID）。" >&2
+    echo "[docker] 警告：无法写入 ${CONFIG_DIR}/config.json（检查挂载目录属主与 PUID/PGID）。" >&2
   fi
 fi
 

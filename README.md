@@ -41,10 +41,10 @@
 cd wecom-todo-sync
 
 # 2) 建运行时目录，生成配置
-mkdir -p data exports logs
-cp config.example.json config.json
-chmod 600 config.json
-# 编辑 config.json：至少填 feishu.app_id / app_secret /
+mkdir -p config data exports logs
+cp config.example.json config/config.json
+chmod 600 config/config.json
+# 编辑 config/config.json：至少填 feishu.app_id / app_secret /
 #   feishu.default_assignee_open_id / reverse.default_follower_userid
 
 # 3) 构建镜像（默认走国内镜像源），然后启动
@@ -53,7 +53,8 @@ docker compose up -d
 docker compose logs -f app
 ```
 
-> `docker-compose.yml` 不负责构建，只使用预先构好的 `wecom-todo-sync:latest`。
+> `docker-compose.yml` 不负责构建，只使用预先构好的 `wecom-todo-sync:0.1`。
+> 程序文件全部在镜像里，宿主机只需要 `config/`、`data/`、`exports/`、`logs/` 四个目录。
 > 换了机器 / 升级代码后，先跑 `./build.sh`，再 `docker compose up -d`。
 
 `build.sh` 默认使用国内镜像源，可用环境变量覆盖：
@@ -64,7 +65,7 @@ docker compose logs -f app
 | `APT_MIRROR` | `mirrors.aliyun.com` | Debian apt 源 |
 | `NPM_REGISTRY` | `https://registry.npmmirror.com` | npm 源 |
 | `WECOM_CLI_VERSION` | `latest` | 建议锁定版本，如 `1.3.4` |
-| `IMAGE_NAME` | `wecom-todo-sync:latest` | 需与 compose 里的 `image:` 一致 |
+| `IMAGE_NAME` | `wecom-todo-sync:0.1` | 需与 compose 里的 `image:` 一致 |
 
 ```bash
 # 示例：改用清华源 / 自己的镜像仓库
@@ -119,8 +120,8 @@ docker compose logs -f --tail=100                          # 看输出
 
 ## 3. 配置
 
-优先级：**内置默认值 < `config.json` < 环境变量**（环境变量见 compose 的 `environment` 与 `.env.example`）。
-`config.json` 每轮运行都会重新读取，改完不用重启；`.env` 在创建容器时注入，改后要 `docker compose up -d`。
+优先级：**内置默认值 < `config/config.json` < 环境变量**（环境变量见 compose 的 `environment` 与 `.env.example`）。
+配置文件在 `config/config.json`（容器内 `/app/config.json` 是指向它的软链），每轮运行都会重新读取，改完不用重启；`.env` 在创建容器时注入，改后要 `docker compose up -d`。
 
 常用字段：
 
@@ -154,19 +155,20 @@ docker compose logs -f --tail=100                          # 看输出
 
 | 路径 | 内容 | 必须保留 |
 | --- | --- | --- |
+| `config/config.json` | 飞书应用凭证与同步配置 | **是** |
 | `data/wecom_todo.db` | 待办内容 + `sync_map` / `reverse_map`，**防重复的唯一依据** | **是** |
 | `data/user_token.json` | 飞书用户授权（自动续期） | 是 |
 | `data/wecom-cli/` | 企业微信 CLI 授权凭证 | 是 |
 | `data/raw/` | 每次采集的接口原始 JSON（排查字段用） | 否 |
 | `exports/`、`logs/` | 报表与日志 | 否 |
 
-从旧部署迁移时，把上面三样直接放进新环境的 `data/`。**漏了 `wecom_todo.db` 会在飞书重复建任务，漏了 `wecom-cli/` 要重新扫码。**
+从旧部署迁移时，把 `config/config.json` 和 `data/` 里的内容直接放进来。**漏了 `wecom_todo.db` 会在飞书重复建任务，漏了 `wecom-cli/` 要重新扫码。**
 
 备份：
 
 ```bash
 docker compose stop app
-tar czf wecom-todo-backup-$(date +%F).tar.gz config.json data exports
+tar czf wecom-todo-backup-$(date +%F).tar.gz config data exports
 docker compose start app
 ```
 
@@ -202,7 +204,7 @@ docker compose exec -T app bash deploy/sync.sh
 
 1. `data/` 可写（bind mount 属主 / `PUID`、`PGID`）
 2. `wecom-cli` 已授权
-3. 飞书 `app_id` / `app_secret` 已填（`config.json` 或环境变量）
+3. 飞书 `app_id` / `app_secret` 已填（`config/config.json` 或环境变量）
 
 ```bash
 docker inspect --format '{{.State.Health.Status}}' wecom-todo-sync
@@ -247,10 +249,11 @@ docker compose exec app python -m wecom_todo_sync doctor
 
 | 现象 | 处理 |
 | --- | --- |
-| `docker compose up` 报找不到镜像 | 先构建：`./build.sh` |
+| `docker compose up` 报找不到镜像 | 先构建：`./build.sh`（标签需与 compose 的 `image:` 一致） |
+| 从旧版本升级，配置还在根目录 `config.json` | `mkdir -p config && mv config.json config/config.json`（旧容器先 `docker compose down`） |
 | 构建很慢 / 拉不到基础镜像 | `build.sh` 已默认国内源；仍不行就换 `BASE_IMAGE`（如 `docker.1ms.run/library/node:22-bookworm-slim` 或自己的仓库），npm 慢可设 `NPM_REGISTRY` |
 | `permission denied .../docker-entrypoint.sh` | 宿主机脚本缺执行位：`chmod +x deploy/*.sh` |
-| 无法写入 `config.json` / `data/` | bind mount 属主不一致：`chown -R $(id -u):$(id -g) data exports logs config.json`，或设置 `PUID` / `PGID` |
+| 无法写入 `config/config.json` / `data/` | 挂载目录属主不一致：`chown -R $(id -u):$(id -g) config data exports logs`，或设置 `PUID` / `PGID` |
 | `pull` 一直「扫描 0 条」 | `data/user_token.json` 缺失或失效 → 重新做 2.2 授权 |
 | 企业微信待办看不到 | `reverse.default_follower_userid` 没填，待办没有参与人 |
 | 飞书出现重复任务 | `data/wecom_todo.db` 没迁过来，映射表是空的 |
@@ -269,7 +272,7 @@ wecom-todo-sync/                 # 仓库根目录（含 docker-compose.yml）
 ├── build.sh                     # 构建镜像（默认国内镜像源）
 ├── docker-compose.yml           # 定时循环、健康检查、数据挂载（只使用镜像）
 ├── .env.example                 # 可选环境变量（复制成 .env）
-├── config.example.json          # 完整配置示例（复制成 config.json）
+├── config.example.json          # 完整配置示例（复制成 config/config.json）
 ├── deploy/
 │   ├── docker-entrypoint.sh     # 容器入口：首次生成配置 + 定时循环
 │   ├── healthcheck.sh           # 健康检查
@@ -284,12 +287,14 @@ wecom-todo-sync/                 # 仓库根目录（含 docker-compose.yml）
     └── export.py / selftest.py
 ```
 
+运行时会在宿主机生成 `config/`、`data/`、`exports/`、`logs/` 四个目录（均已加入 `.gitignore`）。镜像里**不包含**这些敏感数据，重建镜像不会影响它们。
+
 ---
 
 ## 10. 注意事项与安全
 
-- **不要把 `config.json`、`.env` 提交到仓库**。根目录 `.gitignore` 已覆盖 `config.json`、`.env`、`data/`、`exports/`、`logs/`。
-- 敏感文件：`config.json`（App Secret）、`.env`、`data/user_token.json`、`data/wecom-cli/`（企业微信授权凭证）、`data/wecom_todo.db` 与 `data/raw/`（待办内容和 userid）。泄露后先重置 App Secret 并重新授权。
+- **不要把 `config/`、`.env` 提交到仓库**。根目录 `.gitignore` 已覆盖 `config/`、`.env`、`data/`、`exports/`、`logs/`。
+- 敏感文件：`config/config.json`（App Secret）、`.env`、`data/user_token.json`、`data/wecom-cli/`（企业微信授权凭证）、`data/wecom_todo.db` 与 `data/raw/`（待办内容和 userid）。泄露后先重置 App Secret 并重新授权。
 - 写企业微信的操作（`pull`、`import`、`meetings`）默认只预演，必须加 `--apply`。
 - 「已完成 → 未完成」默认不回写飞书，需要时开 `feishu.allow_reopen`。
 - 企业微信待办正文里的图片/附件不会搬到飞书，只能保留文字。

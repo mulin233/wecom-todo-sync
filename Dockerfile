@@ -54,6 +54,10 @@ RUN ln -snf /usr/bin/python3 /usr/local/bin/python
 
 WORKDIR ${APP_DIR}
 
+# 程序文件全部在镜像里；宿主机只挂载 config/ data/ exports/ logs/。
+# /app/config.json 指向 config/ 下的配置文件，所有子命令默认读它。
+RUN ln -snf config/config.json config.json
+
 COPY requirements.txt config.example.json ./
 COPY samples ./samples/
 COPY wecom_todo_sync ./wecom_todo_sync/

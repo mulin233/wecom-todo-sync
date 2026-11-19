@@ -2,6 +2,7 @@
 data/
 exports/
 logs/
+config/
 config.json
 .env
 .git/

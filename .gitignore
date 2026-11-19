@@ -1,5 +1,6 @@
 # ---------- 敏感配置（绝不入库） ----------
 config.json
+config/
 .env
 .env.*
 !.env.example
