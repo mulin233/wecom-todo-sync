@@ -28,9 +28,57 @@
 2. 安全设置 → 重定向 URL：`http://localhost:8765/callback`
 3. 发布版本并等管理员审批通过，否则接口会报权限错误
 
-> **两个 ID 决定任务在不在「我的任务」里**
-> - 飞书：`feishu.default_assignee_open_id`（用 `whoami --mobile 手机号` 查）。不指派，任务属于应用，你看不到。
-> - 企业微信：`reverse.default_follower_userid`。不填参与人，企业微信待办里也可能看不到。
+### 1.1 获取飞书指派人 open_id
+
+`feishu.default_assignee_open_id` 填的是 **open_id**，不是手机号或姓名。
+
+**飞书指派人：`feishu.default_assignee_open_id`（`ou_` 开头）**
+
+构建镜像并填好 `feishu.app_id` / `app_secret` 后（见第 2 节），用内置的 `whoami` 把手机号 / 邮箱换成 `open_id`：
+
+```bash
+# 企业微信/飞书里登记的手机号
+docker compose run --rm app python -m wecom_todo_sync whoami --mobile 13800138000
+
+# 或者按邮箱
+docker compose run --rm app python -m wecom_todo_sync whoami --email you@example.com
+```
+
+输出示例：
+
+```
+13800138000  ->  open_id: ou_xxxxxxxxxxxxxxxx
+```
+
+把这个 `ou_...` 填进 `config/config.json`：
+
+```json
+{
+  "feishu": {
+    "default_assignee_open_id": "ou_xxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+注意：
+
+- **不要直接填手机号**。代码会把该字段原样作为任务成员 ID 提交（`{"id": ..., "type": "user"}`），填手机号会导致指派无效。
+- `whoami` 需要应用已开通并审批通过 `contact:user.id:readonly`（获取用户 user ID），否则查不到成员。
+- 不想申请通讯录权限：把 `feishu.user_id_type` 改成 `user_id`，直接填管理后台里的成员 User ID（同样不是手机号）。
+- 不填这个字段任务仍然能创建，但属于应用而非你本人，飞书「我的任务」里看不到。
+
+**企业微信参与人：`reverse.default_follower_userid`（可选，默认自动识别）**
+
+默认不需要填。`pull` / `meetings` 会调用 `todo list`，从每条待办的 `followers[].userid` 取交集：
+该接口的定义是「机器人为创建人、**对话人**为参与人」，交集里唯一的 userid 就是扫码登录的账号。
+识别结果缓存在 `data/wecom_todo.db` 的 meta 表，后续直接复用；重新扫码换了账号会自动更新。
+
+如果多条待办的参与人里始终有多个共同成员，无法唯一确定时**不会乱猜**，本次就不指定参与人；
+这时再手动填这个字段即可（值是成员在企业微信管理后台 → 通讯录 → 成员详情里的「账号」/ UserID）。显式配置优先级最高。
+
+> 首次扫码、企业微信待办列表为空时没有数据可推断，会暂时不指定参与人；先在企微里保留一条自己的待办（或手动填一次 userid），之后就能自动识别并缓存。
+
+两个字段写在 `config/config.json` 后每轮同步自动重新读取，**不用重启容器**。
 
 ---
 
@@ -45,7 +93,8 @@ mkdir -p config data exports logs
 cp config.example.json config/config.json
 chmod 600 config/config.json
 # 编辑 config/config.json：至少填 feishu.app_id / app_secret /
-#   feishu.default_assignee_open_id / reverse.default_follower_userid
+#   feishu.default_assignee_open_id（open_id 获取方法见 1.1）
+#   reverse.default_follower_userid 可选，留空 = 自动识别扫码账号
 
 # 3) 构建镜像（默认走国内镜像源），然后启动
 ./build.sh
@@ -131,7 +180,7 @@ docker compose logs -f --tail=100                          # 看输出
 | `feishu.default_assignee_open_id` | 新任务的指派人；不填任务只属于应用 |
 | `feishu.user_id_type` | `open_id` / `union_id` / `user_id` |
 | `feishu.oauth_redirect` | 必须与飞书后台登记的一致，默认 `http://localhost:8765/callback` |
-| `reverse.default_follower_userid` | 反向同步建出来的企业微信待办的参与人 |
+| `reverse.default_follower_userid` | 可选：留空 = 自动识别扫码账号；填了则挂到指定成员 |
 | `wecom.list_methods` | 固定列出待办的方法，如 `[["todo","list"]]`；留空自动发现 |
 | `meetings.enabled` | 会议 → 待办，默认关闭 |
 | `store.db_path` / `export.dir` | 数据库与导出目录（默认 `data/`、`exports/`） |
@@ -255,7 +304,7 @@ docker compose exec app python -m wecom_todo_sync doctor
 | `permission denied .../docker-entrypoint.sh` | 宿主机脚本缺执行位：`chmod +x deploy/*.sh` |
 | 无法写入 `config/config.json` / `data/` | 挂载目录属主不一致：`chown -R $(id -u):$(id -g) config data exports logs`，或设置 `PUID` / `PGID` |
 | `pull` 一直「扫描 0 条」 | `data/user_token.json` 缺失或失效 → 重新做 2.2 授权 |
-| 企业微信待办看不到 | `reverse.default_follower_userid` 没填，待办没有参与人 |
+| 企业微信待办看不到 | 日志里应出现 `[auto] 待办参与人使用扫码账号`；若提示无法识别，填 `reverse.default_follower_userid`（成员 UserID）后重跑 |
 | 飞书出现重复任务 | `data/wecom_todo.db` 没迁过来，映射表是空的 |
 | 日志时间差 8 小时 | `TZ` 被覆盖，确认是 `Asia/Shanghai` |
 | 健康检查一直 unhealthy | `docker compose exec app bash deploy/healthcheck.sh` 看是哪一项 |

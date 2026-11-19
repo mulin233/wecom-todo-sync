@@ -70,6 +70,11 @@ CREATE TABLE IF NOT EXISTS meeting_map (
     synced_at_ms INTEGER,
     last_error   TEXT
 );
+
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -103,6 +108,22 @@ class Store:
         except Exception:
             self.conn.rollback()
             raise
+
+    # --------------------------------------------------------------- meta
+
+    def get_meta(self, key: str, default: str = "") -> str:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return str(row["value"]) if row is not None else default
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self._tx() as conn:
+            conn.execute(
+                """
+                INSERT INTO meta (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, str(value)),
+            )
 
     # -------------------------------------------------------------- todos
 

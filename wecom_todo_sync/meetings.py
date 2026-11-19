@@ -19,6 +19,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from .identity import resolve_follower_userid
 from .models import dump_json
 from .store import Store
 from .wecom_cli import CliError, WeComCli
@@ -180,6 +181,18 @@ def sync_meetings(
     run_id = store.start_run("meetings")
 
     cli = WeComCli(cfg)
+
+    # 会议待办同样支持“扫码账号即参与人”：显式配置 > 自动识别
+    follower = str(meeting_cfg.get("follower_userid") or "").strip()
+    if not follower:
+        follower = str((cfg.get("reverse") or {}).get("default_follower_userid") or "").strip()
+    if not follower:
+        follower = resolve_follower_userid(cfg, store, cli, verbose=verbose)
+        if follower:
+            cfg.setdefault("reverse", {})["default_follower_userid"] = follower
+            if verbose:
+                print(f"[auto] 待办参与人使用扫码账号：{follower}")
+
     meetings = fetch_meetings(cli, cfg, verbose=verbose)
     stats["scanned"] = len(meetings)
 

@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .feishu import FeishuTaskClient
+from .identity import resolve_follower_userid
 from .models import dump_json
 from .store import Store
 from .wecom_cli import CliError, WeComCli
@@ -176,14 +177,20 @@ def pull(
     skip_reasons: List[tuple] = []
     run_id = store.start_run("pull")
 
-    if not follower:
-        print(
-            "[warn] 没有配置 reverse.default_follower_userid："
-            "新建的待办不会挂在任何人名下，你可能在企业微信「待办」里看不到它。"
-        )
-
     client = FeishuTaskClient(cfg)
     cli: Optional[WeComCli] = WeComCli(cfg) if apply else None
+
+    # 没显式配置参与人时，自动识别扫码账号（todo list 的对话人）
+    if not follower:
+        follower = resolve_follower_userid(cfg, store, cli, verbose=verbose)
+        if follower:
+            reverse_cfg["default_follower_userid"] = follower
+            print(f"[auto] 待办参与人使用扫码账号：{follower}")
+        else:
+            print(
+                "[info] 未能识别扫码账号的 userid，本次待办不指定参与人；"
+                "可在 config 里设置 reverse.default_follower_userid。"
+            )
 
     for task in client.iter_tasks(page_size=50, max_pages=max_pages):
         if limit and (stats["created"] + stats["updated"] + stats["finished"] + stats["planned"]) >= limit:

@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from .collector import _detail_items, combine_details, merge_details
 from .config import DEFAULT_CONFIG, load_config
 from .feishu import build_task_payload
+from .identity import wecom_userid_from_pages
 from .meetings import build_todo_payload as build_meeting_todo, meeting_source_id, time_window
 from .models import Todo, flatten_todos, normalize_status, to_epoch_ms
 from .wecom_cli import (
@@ -448,6 +449,27 @@ def run_selftest() -> int:
         failures,
     )
     _check("来源：企业微信会议 m1" in meet_desc, "描述带来源标记", failures)
+
+    print("12) 自动识别扫码账号（待办参与人）")
+    pages = [
+        {
+            "items": [
+                {"followers": [{"userid": "woSELF"}]},
+                {"followers": [{"userid": "woSELF"}, {"userid": "woOTHER"}]},
+            ]
+        }
+    ]
+    _check(wecom_userid_from_pages(pages) == "woSELF", "取 followers 交集作为扫码账号", failures)
+    ambiguous = [
+        {
+            "items": [
+                {"followers": [{"userid": "woSELF"}, {"userid": "woOTHER"}]},
+                {"followers": [{"userid": "woSELF"}, {"userid": "woOTHER"}]},
+            ]
+        }
+    ]
+    _check(wecom_userid_from_pages(ambiguous) == "", "多人共同参与时不猜", failures)
+    _check(wecom_userid_from_pages([]) == "", "空列表不猜", failures)
 
     print()
     if failures:

@@ -75,7 +75,9 @@ DEFAULT_CONFIG = {
         "create_method": ["todo", "create"],
         "update_method": ["todo", "update"],
         "finish_method": ["todo", "finish"],
-        # 建出来的待办挂给谁（企业微信 userid）。留空的话企业微信「待办」里可能看不到。
+        # 建出来的待办挂给谁（企业微信 userid）。
+        # 留空 = 自动识别扫码账号（todo list 里所有待办共同的那个参与人）；
+        # 只有想指定其他成员时才需要填，填了优先使用。
         "default_follower_userid": "",
         # 最多翻多少页飞书任务列表（每页 50）
         "max_pages": 20,

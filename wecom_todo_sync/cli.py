@@ -19,6 +19,7 @@ from .collector import collect
 from .config import load_config, resolve_path
 from .export import export_all
 from .feishu import FeishuError, FeishuTaskClient
+from .identity import resolve_follower_userid
 from .meetings import sync_meetings
 from .reverse import _parse_create_response, build_create_payload, is_completed, payload_hash, pull
 from .selftest import run_selftest
@@ -150,7 +151,8 @@ def cmd_doctor(args) -> int:
     if follower:
         _print(f"  [ok]   待办参与人 userid：{follower}")
     else:
-        _print("  [warn] 未配置 reverse.default_follower_userid：建出来的待办没有参与人，可能看不到")
+        _print("  [ok]   未指定参与人：pull 时自动识别扫码账号作为参与人")
+        _print("         识别不出（多人共同参与）时可手动填 reverse.default_follower_userid")
     stored_token = load_token(base_dir)
     if stored_token:
         _print(f"  [ok]   用户授权：{stored_token.get('name') or '(未知)'}（pull 能看到你本人的任务）")
@@ -448,16 +450,23 @@ def cmd_import(args) -> int:
         _print("这条任务已完成，按规则不导入（先在飞书里取消完成再试）")
         return 1
 
-    payload = build_create_payload(task, cfg)
-    _print(f"任务：{task.get('summary')!r}  guid={guid}")
-    _print("将发送：" + json.dumps(payload, ensure_ascii=False))
-
-    if args.dry_run:
-        _print("（--dry-run，未写入企业微信）")
-        return 0
-
     store = _open_store(cfg, base_dir, args.db)
     try:
+        cli = WeComCli(cfg)
+        # 没显式配置参与人时，自动识别扫码账号
+        follower = resolve_follower_userid(cfg, store, cli, verbose=args.verbose)
+        if follower:
+            cfg.setdefault("reverse", {})["default_follower_userid"] = follower
+            _print(f"[auto] 待办参与人使用扫码账号：{follower}")
+
+        payload = build_create_payload(task, cfg)
+        _print(f"任务：{task.get('summary')!r}  guid={guid}")
+        _print("将发送：" + json.dumps(payload, ensure_ascii=False))
+
+        if args.dry_run:
+            _print("（--dry-run，未写入企业微信）")
+            return 0
+
         if store.get_mapping_by_guid(guid) is not None:
             _print("这条任务是从企业微信同步过去的（前向），跳过以避免重复")
             return 0
@@ -466,7 +475,6 @@ def cmd_import(args) -> int:
             _print(f"已经导入过：{existing['wecom_todo_id']}（要重导加 --force）")
             return 0
 
-        cli = WeComCli(cfg)
         response = cli.create_items(payload)
         todo_ids, errors = _parse_create_response(response)
         if errors:
@@ -555,7 +563,7 @@ def cmd_init(args) -> int:
         str(cfg["feishu"].get("default_assignee_open_id") or ""),
     )
     follower = ask(
-        "企业微信 userid（待办参与人，wo 开头，可留空）",
+        "企业微信 userid（可选，留空 = 扫码账号；要挂到其他成员时填）",
         str(cfg["reverse"].get("default_follower_userid") or ""),
     )
 
