@@ -1,0 +1,51 @@
+name: wecom-todo-sync
+
+services:
+  app:
+    image: wecom-todo-sync:latest
+    container_name: wecom-todo-sync
+    restart: unless-stopped
+    # init: Docker 自带的 tini，负责转发信号、回收僵尸进程
+    init: true
+    stop_grace_period: 30s
+
+    # 容器以什么身份写 ./data、./exports、./logs（bind mount 的属主权限）
+    # 默认 root（宝塔/服务器上最省事）；桌面用户可改成 PUID=$(id -u) PGID=$(id -g)
+    user: "${PUID:-0}:${PGID:-0}"
+
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+      # 同步间隔（秒）。300 = 每 5 分钟一轮；0 = 只在启动时跑一轮，然后空闲
+      SYNC_INTERVAL_SECONDS: "${SYNC_INTERVAL_SECONDS:-300}"
+      SYNC_ON_START: "${SYNC_ON_START:-1}"
+      # 同步输出同时打到 docker logs（容器日志）和 logs/sync.log
+      SYNC_LOG_STDOUT: "1"
+      PYTHONUNBUFFERED: "1"
+      # 企业微信 CLI 凭证目录：放到 data/ 下，容器重建/升级不丢授权
+      WECOM_CLI_CONFIG_DIR: /app/data/wecom-cli
+      WECOM_CLI_LOG_DIR: /app/logs/wecom-cli
+      # 容器内 OAuth 回调必须监听 0.0.0.0，宿主机端口映射才能连进来
+      FEISHU_OAUTH_BIND: "${FEISHU_OAUTH_BIND:-0.0.0.0}"
+      # 可选：用环境变量覆盖 config.json（留空则用 config.json 里的值）
+      FEISHU_APP_ID: "${FEISHU_APP_ID:-}"
+      FEISHU_APP_SECRET: "${FEISHU_APP_SECRET:-}"
+      FEISHU_BASE_URL: "${FEISHU_BASE_URL:-}"
+      FEISHU_ASSIGNEE_OPEN_ID: "${FEISHU_ASSIGNEE_OPEN_ID:-}"
+      FEISHU_TASKLIST_GUID: "${FEISHU_TASKLIST_GUID:-}"
+
+    volumes:
+      # 整个项目目录挂进去：config.json、data/、exports/、logs/ 都直接落在宿主机
+      - ./:/app
+
+    ports:
+      # 仅本机使用：飞书 OAuth 回调 http://localhost:8765/callback
+      - "127.0.0.1:8765:8765"
+
+    # 健康检查看的是「同步能否跑起来」：data 可写 + 企微 CLI 已授权 + 飞书凭证已填。
+    # 初始化完成前显示 unhealthy 属正常现象；docker ps 里会一直显示 (unhealthy)。
+    healthcheck:
+      test: ["CMD-SHELL", "bash /app/deploy/healthcheck.sh"]
+      interval: 5m
+      timeout: 60s
+      retries: 3
+      start_period: 60s

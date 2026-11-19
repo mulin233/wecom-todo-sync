@@ -1,0 +1,50 @@
+# ---------- 敏感配置（绝不入库） ----------
+config.json
+.env
+.env.*
+!.env.example
+
+# ---------- 运行时数据 ----------
+# SQLite 库、原始 JSON、飞书 token、企业微信 CLI 凭证
+data/
+# 导出的 Markdown / CSV / JSON
+exports/
+# sync.log、wecom-cli 日志
+logs/
+*.log
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.eggs/
+.coverage
+htmlcov/
+
+# ---------- Docker / 本地覆盖 ----------
+docker-compose.override.yml
+compose.override.yml
+
+# ---------- 编辑器 / 操作系统 ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 临时文件 ----------
+*.tmp
+*.bak
+*.orig
+.wecom-qr.png

@@ -149,9 +149,12 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         return
 
 
-def wait_for_code(redirect_uri: str, timeout: int = 300) -> Dict[str, str]:
+def wait_for_code(redirect_uri: str, timeout: int = 300, bind_host: str = "") -> Dict[str, str]:
     parsed = urllib.parse.urlparse(redirect_uri)
-    host = parsed.hostname or "localhost"
+    # 绑定的地址和 redirect_uri 里的主机名可以分开：
+    # Docker 部署时 redirect_uri 仍是 http://localhost:8765/callback（飞书后台也这么配），
+    # 但容器内必须监听 0.0.0.0 才能被宿主机端口映射转发到。
+    host = bind_host or parsed.hostname or "localhost"
     port = parsed.port or 80
     _CallbackHandler.result = {}
 
@@ -273,6 +276,7 @@ def login(cfg: Dict[str, Any], base_dir: Path, open_browser: bool = True) -> Dic
 
     redirect_uri = str(feishu_cfg.get("oauth_redirect") or DEFAULT_REDIRECT)
     scope = str(feishu_cfg.get("oauth_scope") or DEFAULT_SCOPE)
+    bind_host = str(feishu_cfg.get("oauth_bind_host") or "")
     state = secrets.token_urlsafe(8)
 
     url = build_authorize_url(app_id, redirect_uri, scope, state)
@@ -284,7 +288,7 @@ def login(cfg: Dict[str, Any], base_dir: Path, open_browser: bool = True) -> Dic
         except Exception:  # noqa: BLE001
             pass
 
-    result = wait_for_code(redirect_uri)
+    result = wait_for_code(redirect_uri, bind_host=bind_host)
     if result.get("error"):
         raise OAuthError(f"授权被拒绝：{result.get('error')} {result.get('error_description', '')}")
     code = result.get("code")

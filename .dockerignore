@@ -1,0 +1,10 @@
+# 构建镜像时不需要打进上下文的内容（运行时由 compose 以 bind mount 提供）
+data/
+exports/
+logs/
+config.json
+.env
+.git/
+**/__pycache__/
+**/*.pyc
+*.log

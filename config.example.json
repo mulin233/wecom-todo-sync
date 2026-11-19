@@ -24,7 +24,8 @@
     "allow_reopen": false,
     "timeout_seconds": 30,
     "oauth_redirect": "http://localhost:8765/callback",
-    "oauth_scope": "task:task:read"
+    "oauth_scope": "task:task:read",
+    "oauth_bind_host": ""
   },
   "store": {
     "db_path": "data/wecom_todo.db",

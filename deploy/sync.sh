@@ -29,7 +29,9 @@ LOCK_FILE="$DATA_DIR/.sync.lock"
 exec 9>"$LOCK_FILE" 2>/dev/null
 if command -v flock >/dev/null 2>&1; then
   if ! flock -n 9; then
-    echo "[$(date '+%F %T')] 上一轮仍在执行，本次跳过" >>"$LOG_FILE"
+    msg="[$(date '+%F %T')] 上一轮仍在执行，本次跳过"
+    echo "$msg" >>"$LOG_FILE"
+    [ "${SYNC_LOG_STDOUT:-0}" = "1" ] && echo "$msg"
     exit 0
   fi
 fi
@@ -41,14 +43,25 @@ if [ -x "$APP_DIR/.venv/bin/python" ]; then
 fi
 
 # ---- 跑同步 ----
-{
+run_both() {
+  local pull_rc=0 sync_rc=0
   echo "===== $(date '+%F %T') 开始 ====="
   "$PYTHON_BIN" -m wecom_todo_sync pull --apply
   pull_rc=$?
   "$PYTHON_BIN" -m wecom_todo_sync sync --export
   sync_rc=$?
   echo "===== $(date '+%F %T') 结束 pull=$pull_rc sync=$sync_rc ====="
-} >>"$LOG_FILE" 2>&1
+  [ "$pull_rc" -eq 0 ] && [ "$sync_rc" -eq 0 ]
+}
+
+# SYNC_LOG_STDOUT=1 时同时输出到容器日志（docker logs）；默认只写文件（cron 友好）
+if [ "${SYNC_LOG_STDOUT:-0}" = "1" ]; then
+  run_both 2>&1 | tee -a "$LOG_FILE"
+  rc=${PIPESTATUS[0]}
+else
+  run_both >>"$LOG_FILE" 2>&1
+  rc=$?
+fi
 
 # ---- 日志裁剪（保留最后 2000 行） ----
 if [ -f "$LOG_FILE" ]; then
@@ -58,7 +71,7 @@ if [ -f "$LOG_FILE" ]; then
   fi
 fi
 
-if [ "${pull_rc:-0}" -ne 0 ] || [ "${sync_rc:-0}" -ne 0 ]; then
+if [ "${rc:-0}" -ne 0 ]; then
   exit 1
 fi
 exit 0

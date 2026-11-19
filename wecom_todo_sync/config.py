@@ -58,6 +58,9 @@ DEFAULT_CONFIG = {
         # 用户授权（反向同步要读"你本人的"任务，必须用 user_access_token）
         "oauth_redirect": "http://localhost:8765/callback",
         "oauth_scope": "task:task:read",
+        # 本地回调服务监听的地址。留空 = 用 oauth_redirect 里的主机名（一般 localhost）。
+        # 跑在 Docker 里时必须设为 0.0.0.0，否则宿主机端口映射连不进来。
+        "oauth_bind_host": "",
     },
     "store": {
         "db_path": "data/wecom_todo.db",
@@ -148,6 +151,7 @@ ENV_MAP = {
     "FEISHU_USER_ACCESS_TOKEN": "feishu.user_access_token",
     "FEISHU_ASSIGNEE_OPEN_ID": "feishu.default_assignee_open_id",
     "FEISHU_TASKLIST_GUID": "feishu.tasklist_guid",
+    "FEISHU_OAUTH_BIND": "feishu.oauth_bind_host",
     "WECOM_TODO_DB": "store.db_path",
 }
 
